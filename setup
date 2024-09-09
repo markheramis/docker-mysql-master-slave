@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# Load environment variables from .env file
+load_env() {
+    if [ -f .env ]; then
+        export $(grep -v '^#' .env | xargs)
+    else
+        echo ".env file not found!"
+        exit 1
+    fi
+}
+
+# Clean up the data and log directories for master and slave
+clean_directories() {
+    echo "Cleaning up data and log directories..."
+    rm -rf ./master/data/*
+    rm -rf ./master/log/*
+    rm -rf ./slave/data/*
+    rm -rf ./slave/log/*
+}
+
+# Update MySQL configuration files
+update_mysql_configs() {
+    echo "Updating MySQL configuration files..."
+    sed -i "s/^binlog_do_db.*/binlog_do_db = $MASTER_MYSQL_DATABASE/" master/conf.d/mysql.conf.cnf
+    sed -i "s/^binlog_do_db.*/binlog_do_db = $SLAVE_MYSQL_DATABASE/" slave/conf.d/mysql.conf.cnf
+}
+
+# Rebuild and start Docker containers
+rebuild_and_start_docker() {
+    echo "Rebuilding and starting Docker containers..."
+    docker compose down -v
+    docker compose build
+    docker compose up -d
+}
+
+# Function to check MySQL connection without printing errors
+check_mysql_connection() {
+    docker exec "$1" sh -c "export MYSQL_PWD=$2; mysql -u root -e ';'" &> /dev/null
+}
+
+# Wait for MySQL to be ready
+wait_for_mysql() {
+    local service_name="$1"
+    local root_password="$2"
+    echo "Waiting for $service_name to be ready..."
+    until check_mysql_connection "$service_name" "$root_password"; do
+        sleep 4  # Wait for 4 seconds before checking again
+    done
+    echo "$service_name database connection established."
+}
+
+# Set up replication on the MySQL master
+setup_master_replication() {
+    echo "Setting up replication on the master..."
+    priv_stmt='CREATE USER "replication_user"@"%" IDENTIFIED BY "replication_pass"; GRANT REPLICATION SLAVE ON *.* TO "replication_user"@"%"; FLUSH PRIVILEGES;'
+    docker exec mysql_master sh -c "export MYSQL_PWD=$MASTER_MYSQL_ROOT_PASSWORD; mysql -u root -e '$priv_stmt'"
+}
+
+# Get the master's binary log file and position
+get_master_status() {
+    echo "Retrieving master status..."
+    MS_STATUS=$(docker exec mysql_master sh -c "export MYSQL_PWD=$MASTER_MYSQL_ROOT_PASSWORD; mysql -u root -e 'SHOW MASTER STATUS'")
+    CURRENT_LOG=$(echo $MS_STATUS | awk '{print $6}')
+    CURRENT_POS=$(echo $MS_STATUS | awk '{print $7}')
+}
+
+# Configure the slave to connect to the master
+setup_slave_replication() {
+    echo "Configuring replication on the slave..."
+    start_slave_stmt="CHANGE MASTER TO MASTER_HOST='mysql_master', MASTER_USER='replication_user', MASTER_PASSWORD='replication_pass', MASTER_LOG_FILE='$CURRENT_LOG', MASTER_LOG_POS=$CURRENT_POS; START SLAVE;"
+    docker exec mysql_slave sh -c "export MYSQL_PWD=$SLAVE_MYSQL_ROOT_PASSWORD; mysql -u root -e \"$start_slave_stmt\""
+}
+
+# Check slave replication status
+check_slave_status() {
+    echo "Checking slave replication status..."
+    docker exec mysql_slave sh -c "export MYSQL_PWD=$SLAVE_MYSQL_ROOT_PASSWORD; mysql -u root -e 'SHOW SLAVE STATUS \G'"
+}
+
+# Main function to organize the process
+main() {
+    load_env
+    clean_directories
+    update_mysql_configs
+    rebuild_and_start_docker
+
+    # Master operations
+    wait_for_mysql "mysql_master" "$MASTER_MYSQL_ROOT_PASSWORD"
+    setup_master_replication
+    get_master_status
+
+    # Slave operations
+    wait_for_mysql "mysql_slave" "$SLAVE_MYSQL_ROOT_PASSWORD"
+    setup_slave_replication
+    check_slave_status
+}
+
+# Run the main function
+main

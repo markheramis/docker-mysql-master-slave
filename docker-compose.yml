@@ -1,0 +1,43 @@
+services:
+  mysql_master:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MASTER_MYSQL_ROOT_PASSWORD}"
+      MYSQL_PORT: ${MASTER_MYSQL_PORT}
+      MYSQL_USER: "${MASTER_MYSQL_USER}"
+      MYSQL_PASSWORD: "${MASTER_MYSQL_PASSWORD}"
+      MYSQL_DATABASE: "${MASTER_MYSQL_DATABASE}"
+      MYSQL_LOWER_CASE_TABLE_NAMES: ${MYSQL_LOWER_CASE_TABLE_NAMES}
+    container_name: "mysql_master"
+    restart: "no"
+    ports:
+      - 4406:3306
+    volumes:
+      - ./master/conf.d/:/etc/mysql/conf.d/
+      - ./master/log:/var/log/mysql
+      - ./master/data:/var/lib/mysql
+    networks:
+      - overlay
+  mysql_slave:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: "${SLAVE_MYSQL_ROOT_PASSWORD}"
+      MYSQL_PORT: ${SLAVE_MYSQL_PORT}
+      MYSQL_USER: "${SLAVE_MYSQL_USER}"
+      MYSQL_PASSWORD: "${SLAVE_MYSQL_PASSWORD}"
+      MYSQL_DATABASE: "${SLAVE_MYSQL_DATABASE}"
+      MYSQL_LOWER_CASE_TABLE_NAMES: ${MYSQL_LOWER_CASE_TABLE_NAMES}
+    container_name: "mysql_slave"
+    restart: "no"
+    ports:
+      - 5506:3306
+    depends_on:
+      - mysql_master
+    volumes:
+      - ./slave/conf.d/:/etc/mysql/conf.d/
+      - ./slave/log:/var/log/mysql
+      - ./slave/data:/var/lib/mysql
+    networks:
+      - overlay
+networks:
+  overlay:
