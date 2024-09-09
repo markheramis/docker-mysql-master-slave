@@ -21,8 +21,8 @@ This repository contains a setup for a MySQL Master-Slave replication environmen
 ### 1. Clone the Repository
 
 ```bash
-git clone <repository-url>
-cd <repository-directory>
+git clone https://github.com/markheramis/docker-mysql-master-slave.git
+cd docker-mysql-master-slave
 ```
 
 ### 2. Configure the .env File
