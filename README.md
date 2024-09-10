@@ -86,8 +86,59 @@ The script performs the following actions:
 
 ### 5. Verify the Setup
 
-After running the setup script, you can verify the replication status by checking the MySQL slave status:
+After running the setup script, you can verify that the MySQL replication is functioning correctly. Follow these steps:
+
+#### 5.1 Check the MySQL Slave Replication Status
+
+First, check the status of the replication on the slave database:
 
 ```bash
 docker exec mysql_slave sh -c "export MYSQL_PWD=$SLAVE_MYSQL_ROOT_PASSWORD; mysql -u root -e 'SHOW SLAVE STATUS \G'"
 ```
+
+This command should display detailed information about the replication status. Look for the following key fields to verify that replication is working correctly:
+
+- `Slave_IO_Running`: Should be `Yes`.
+- `Slave_SQL_Running`: Should be `Yes`.
+- `Seconds_Behind_Master`: Should be `0` or a low number, indicating that the slave is in sync with the master.
+- `Last_IO_Error` and `Last_SQL_Error`: Should be empty, indicating no errors occurred during replication.
+
+#### 5.2 Test Replication by Performing Operations on the Master
+
+Once the slave status shows no issues, you can test the replication by performing actions on the master database and checking if the changes replicate to the slave.
+
+1. Create a new table on the master:
+  ```bash
+  docker exec mysql_master sh -c "export MYSQL_PWD=$MASTER_MYSQL_ROOT_PASSWORD; mysql -u root -e 'CREATE DATABASE IF NOT EXISTS test_db; USE test_db; CREATE TABLE users (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255));'"
+  ```
+2. Insert data into the table:
+  ```bash
+  docker exec mysql_master sh -c "export MYSQL_PWD=$MASTER_MYSQL_ROOT_PASSWORD; mysql -u root -e 'USE test_db; INSERT INTO users (name) VALUES (\"Alice\"), (\"Bob\"), (\"Charlie\");'"
+  ```
+
+#### 5.3 Verify the Data Replication on the Slave
+
+Once the data has been inserted on the master, verify that the changes have been replicated to the slave:
+
+1. Check the existence of the replicated database and table on the slave:
+  ```bash
+  docker exec mysql_slave sh -c "export MYSQL_PWD=$SLAVE_MYSQL_ROOT_PASSWORD; mysql -u root -e 'SHOW DATABASES;'"
+  ```
+  You should see test_db in the list of databases.
+
+2. Verify the replicated data by selecting the rows from the users table
+  ```bash
+  docker exec mysql_slave sh -c "export MYSQL_PWD=$SLAVE_MYSQL_ROOT_PASSWORD; mysql -u root -e 'USE test_db; SELECT * FROM users;'"
+  ```
+  This should return the following data (or similar):
+
+  ```bash
+  +----+---------+
+  | id | name    |
+  +----+---------+
+  |  1 | Alice   |
+  |  2 | Bob     |
+  |  3 | Charlie |
+  +----+---------+
+  ```
+
