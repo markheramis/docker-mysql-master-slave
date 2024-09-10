@@ -84,6 +84,23 @@ The script performs the following actions:
 6. Creates a replication user on the master.
 7. Configures and starts the replication process on the slave.
 
+The important part in the setup script to note are as follows
+
+- Creation of Replication User in `Master Server`
+
+  The code below creates the `replication_user` which we used in the **slave server** to authenticate to the **master server** as seen [here](https://github.com/markheramis/docker-mysql-master-slave/blob/master/setup#L56).
+  ```sql
+  CREATE USER "replication_user"@"%" IDENTIFIED BY "replication_pass"; GRANT REPLICATION SLAVE ON *.* TO "replication_user"@"%"; FLUSH PRIVILEGES;
+  ```
+
+- Configuring and starting `Slave Server`
+  
+  The code below will configure the **master server** configuration and start the **slave service** as seen [here](https://github.com/markheramis/docker-mysql-master-slave/blob/master/setup#L71).
+  ```sql
+  CHANGE MASTER TO MASTER_HOST='mysql_master', MASTER_USER='replication_user', MASTER_PASSWORD='replication_pass', MASTER_LOG_FILE='$CURRENT_LOG', MASTER_LOG_POS=$CURRENT_POS; START SLAVE;
+  ```
+  **NOTE** that the value of `$CURRENT_LOG` and `$CURRENT_POS` is derived from the result of the `SHOW MASTER STATUS` command executed from the **Master Server** as seen [here](https://github.com/markheramis/docker-mysql-master-slave/blob/master/setup#L63C113-L63C131).
+
 ### 5. Verify the Setup
 
 After running the setup script, you can verify that the MySQL replication is functioning correctly. Follow these steps:
